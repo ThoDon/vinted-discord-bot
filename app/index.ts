@@ -7,8 +7,6 @@ import vinted from 'vinted-api';
 import { initialize, Subscription } from './database';
 import { getConnection } from 'typeorm';
 
-import { filterItemsBasedOnProperty } from "./utils/utils";
-
 const adminIDs = process.env.VINTED_BOT_ADMIN_IDS?.split(',')!;
 
 let isFirstSync = true;
@@ -27,32 +25,13 @@ const syncSubscription = (subscriptionData: Subscription) => {
                 return;
             }
             const lastItemTimestamp = subscriptionData.latestItemDate?.getTime();
+            const items = res.items
+                .sort((a, b) => new Date(b.photo.high_resolution.timestamp).getTime() - new Date(a.photo.high_resolution.timestamp).getTime())
+                .filter((item) => !lastItemTimestamp || new Date(item.photo.high_resolution.timestamp).getTime() > lastItemTimestamp);
 
-            const userFilters = subscriptionData.filters;
+            if (!items.length) return void resolve();
 
-            const userFilteredItems = res.items.filter(
-                ({ title, brand_title }) =>
-                    !filterItemsBasedOnProperty(title, userFilters) &&
-                    !filterItemsBasedOnProperty(brand_title, userFilters)
-            );
-
-            const sortedItems = userFilteredItems
-                .sort((a, b) => {
-                    return (
-                        new Date(b.photo.high_resolution.timestamp).getTime() -
-                        new Date(a.photo.high_resolution.timestamp).getTime()
-                    );
-                })
-                .filter(
-                    (item) =>
-                        !lastItemTimestamp ||
-                        new Date(item.photo.high_resolution.timestamp).getTime() >
-                        lastItemTimestamp
-                );
-
-            if (!sortedItems.length) return void resolve();
-
-            const newLastItemDate = new Date(sortedItems[0].photo.high_resolution.timestamp);
+            const newLastItemDate = new Date(items[0].photo.high_resolution.timestamp);
             if (!lastItemTimestamp || newLastItemDate.getTime() > lastItemTimestamp) {
                 getConnection().manager.getRepository(Subscription).update({
                     id: subscriptionData.id
@@ -61,38 +40,33 @@ const syncSubscription = (subscriptionData: Subscription) => {
                 });
             }
 
-            const itemsToSend = ((lastItemTimestamp && !isFirstSync) ? sortedItems.reverse() : [sortedItems[0]]);
+            const itemsToSend = ((lastItemTimestamp && !isFirstSync) ? items.reverse() : [items[0]]);
 
             for (let item of itemsToSend) {
                 const embed = new Discord.MessageEmbed()
                     .setTitle(item.title)
                     .setURL(item.url)
                     .setImage(item.photo.url)
-                    .setColor("#09B1BA")
+                    .setColor('#09B1BA')
+                    .setTimestamp(new Date(item.photo.high_resolution.timestamp))
                     .setFooter(`Article lié à la recherche : ${subscriptionData.id}`)
-                    .addField("Prix", item.price || "vide", true)
-                    .addField("Taille", item.size_title || "vide", true)
-                    .addField("Ajouté le", `${new Date(item.photo.high_resolution.timestamp * 1000).toLocaleString("fr-FR", { timeZone: "Europe/Brussels" })}` ||
-                        "vide",
-                        true
-                    );
-                (client.channels.cache.get(subscriptionData.channelId) as TextChannel).send({
-                    embeds: [embed], components: [
-                        new Discord.MessageActionRow()
-                            .addComponents([
-                                new Discord.MessageButton()
-                                    .setLabel('Détails')
-                                    .setURL(item.url)
-                                    .setEmoji('🔎')
-                                    .setStyle('LINK'),
-                                new Discord.MessageButton()
-                                    .setLabel('Acheter')
-                                    .setURL(`https://www.vinted.fr/transaction/buy/new?source_screen=item&transaction%5Bitem_id%5D=${item.id}`)
-                                    .setEmoji('💸')
-                                    .setStyle('LINK')
-                            ])
-                    ]
-                });
+                    .addField('Prix', item.price || 'vide', true)
+                    .addField('Taille', item.size_title || 'vide', true);
+                (client.channels.cache.get(subscriptionData.channelId) as TextChannel).send({ embeds: [embed], components: [
+                    new Discord.MessageActionRow()
+                        .addComponents([
+                            new Discord.MessageButton()
+                                .setLabel('Détails')
+                                .setURL(item.url)
+                                .setEmoji('🔎')
+                                .setStyle('LINK'),
+                            new Discord.MessageButton()
+                                .setLabel('Acheter')
+                                .setURL(`https://www.vinted.fr/transaction/buy/new?source_screen=item&transaction%5Bitem_id%5D=${item.id}`)
+                                .setEmoji('💸')
+                                .setStyle('LINK')
+                        ])
+                ] });
             }
 
             if (itemsToSend.length > 0) {
@@ -139,7 +113,7 @@ client.on('ready', () => {
         `🤟 Le saviez-vous ? Nous proposons notre propre version du bot en ligne 24/24 7/7 sans que vous n'ayez besoin de vous soucier de quoi que ce soit ! https://distrobot.fr\n`
     ];
     let idx = 0;
-    const donate = () => console.log(messages[idx % 2]);
+    const donate = () => console.log(messages[ idx % 2 ]);
     setTimeout(() => {
         donate();
     }, 3000);
@@ -165,11 +139,10 @@ client.on('interactionCreate', async (interaction) => {
                 url: interaction.options.getString('url')!,
                 channelId: interaction.options.getChannel('channel')!.id,
                 createdAt: new Date(),
-                isActive: true,
-                filters: interaction.options.getString("filters")!.split(","),
+                isActive: true
             }
             getConnection().manager.getRepository(Subscription).save(sub);
-            interaction.reply(`:white_check_mark: Votre abonnement a été créé avec succès !\n**URL**: <${sub.url}>\n**Salon**: <#${sub.channelId}> **Filtres**: ${sub.filters.join(", ")}\n`);
+            interaction.reply(`:white_check_mark: Votre abonnement a été créé avec succès !\n**URL**: <${sub.url}>\n**Salon**: <#${sub.channelId}>`);
             break;
         }
         case 'désabonner': {
@@ -194,27 +167,27 @@ client.on('interactionCreate', async (interaction) => {
                 isActive: true
             });
             const chunks: string[][] = [[]];
-
+    
             subscriptions.forEach((sub) => {
-                const content = `**ID**: ${sub.id}\n**URL**: ${sub.url}\n**Salon**: <#${sub.channelId}>\n**Filtres**: ${sub.filters.join(", ")}\n`;
+                const content = `**ID**: ${sub.id}\n**URL**: ${sub.url}\n**Salon**: <#${sub.channelId}>\n`;
                 const lastChunk = chunks.shift()!;
                 if ((lastChunk.join('\n').length + content.length) > 1024) {
                     if (lastChunk) chunks.push(lastChunk);
-                    chunks.push([content]);
+                    chunks.push([ content ]);
                 } else {
                     lastChunk.push(content);
                     chunks.push(lastChunk);
                 }
             });
-
+    
             interaction.reply(`:white_check_mark: **${subscriptions.length}** abonnements sont actifs !`);
-
+    
             chunks.forEach((chunk) => {
                 const embed = new Discord.MessageEmbed()
-                    .setColor('RED')
-                    .setAuthor(`Utilisez la commande /désabonner pour supprimer un abonnement !`)
-                    .setDescription(chunk.join('\n'));
-
+                .setColor('RED')
+                .setAuthor(`Utilisez la commande /désabonner pour supprimer un abonnement !`)
+                .setDescription(chunk.join('\n'));
+            
                 interaction.channel!.send({ embeds: [embed] });
             });
         }

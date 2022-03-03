@@ -19,7 +19,7 @@ export class Subscription {
     url!: string;
 
     @Column({
-        length: 32
+        length:  32
     })
     channelId!: string;
 
@@ -36,7 +36,5 @@ export class Subscription {
         type: 'timestamp with time zone'
     })
     createdAt!: Date;
-    
-    @Column("simple-array")
-    filters!: string[];
+
 }

@@ -20,13 +20,7 @@ const commands = [
                 description: 'Le salon dans lequel vous souhaitez envoyer les notifications',
                 type: ApplicationCommandOptionType.Channel,
                 required: true
-            },
-            {
-                name: "filters",
-                description: "Les éléments à filtrer (ex: 'pokemon,yu-gi-oh,dragonball')",
-                type: ApplicationCommandOptionType.String,
-                required: false,
-            },
+            }
         ]
     },
     {
@@ -59,7 +53,7 @@ const rest = new REST({ version: '9' }).setToken(process.env.VINTED_BOT_TOKEN);
 
         console.log(`👋 Connected as ${username}!`);
 
-        const [{ id: guildId, name: guildName }] = await rest.get(
+        const [ { id: guildId, name: guildName } ] = await rest.get(
             Routes.userGuilds()
         );
 
